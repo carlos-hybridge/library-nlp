@@ -72,7 +72,7 @@ def main():
     comparative_data = []
 
     doc = tokenize(text)
-    tokens = filter_tokens(doc)
+    filter_tokens(doc)
     lemmatize(doc)
 
     for token in doc:
