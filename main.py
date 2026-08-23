@@ -1,12 +1,12 @@
+import multiprocessing
+
 import spacy
 import pandas as pd
 from nltk.stem import SnowballStemmer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import numpy as np
+from gensim.models import Word2Vec
 
 
 def tokenize(text):
@@ -88,13 +88,23 @@ def plot_words_3d(ax, matrix, vocabulary, title, points_color):
     ax.set_ylabel("Comp. Principal 2")
     ax.set_zlabel("Comp. Principal 3")
 
-    ax.plot([0,0], [0,0], [z.min(), z.max()], c='gray', linestyle='--', linewidth=0.5)
-    ax.plot([x.min(), x.max()], [0,0], [0,0], c='gray', ls='--', lw=0.5, alpha=0.5)
-    ax.plot([0,0], [y.min(), y.max()], [0,0], c='gray', ls='--', lw=0.5, alpha=0.5)
+    ax.plot([0, 0], [0, 0], [z.min(), z.max()], c='gray', linestyle='--', linewidth=0.5)
+    ax.plot([x.min(), x.max()], [0, 0], [0, 0], c='gray', ls='--', lw=0.5, alpha=0.5)
+    ax.plot([0, 0], [y.min(), y.max()], [0, 0], c='gray', ls='--', lw=0.5, alpha=0.5)
+
+
+def show_similar_words(word, model):
+    try:
+        similar_words = model.wv.most_similar(word, topn=3)
+        print(f"\nPalabras mas cercanas semánticamente a '{word}':")
+        for sim in similar_words:
+            print(f"  - {sim[0]} (similitud: {sim[1]:.4f})")
+    except KeyError:
+        print(f"\nLa palabra '{word}' no esta en el vocabulario.")
 
 
 def main():
-    with open("books/la_biblioteca_de_babel.txt", "r", encoding="utf-8") as f:
+    with open("books/cap1_principito.txt", "r", encoding="utf-8") as f:
         text = f.read()
 
     stemmer = SnowballStemmer("spanish")
@@ -127,7 +137,6 @@ def main():
     print(df.head(10).to_string(index=False))
 
     corpus_lemmatized = []
-
     for sentence in doc.sents:
         sentence_lemmas = [
             token.lemma_.lower()
@@ -136,7 +145,6 @@ def main():
         ]
         if sentence_lemmas:
             corpus_lemmatized.append(" ".join(sentence_lemmas))
-
     print(f"Total de oraciones procesadas: {len(corpus_lemmatized)}")
 
     fig = plt.figure(figsize=(18, 8))
@@ -159,6 +167,64 @@ def main():
 
     plt.tight_layout()
     plt.show()
+
+    sentences = []
+    for sent in doc.sents:
+        tokens = [
+            token.lemma_.lower()
+            for token in sent
+            if not token.is_stop and not token.is_punct and token.text.strip()
+        ]
+        if len(tokens) > 1:
+            sentences.append(tokens)
+
+    print(f"Total de oraciones procesadas: {len(sentences)}")
+    print(f"Ejemplo (tokens): {sentences[0]}")
+
+    print("\nEntrenando red neuronal Word2Vec...")
+
+    model = Word2Vec(
+        sentences,
+        vector_size=10,
+        window=5,
+        min_count=1,
+        workers=multiprocessing.cpu_count(),
+        seed=42
+    )
+
+    show_similar_words("cordero", model)
+    show_similar_words("escencial", model)
+
+    vocabulary = list(model.wv.index_to_key)
+    vectors = model.wv[vocabulary]
+
+    pca = PCA(n_components=3)
+    vectors_3d = pca.fit_transform(vectors)
+
+    df_3d = pd.DataFrame(vectors_3d, columns=["x", "y", "z"])
+    df_3d['palabra'] = vocabulary
+
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(df_3d['x'], df_3d['y'], df_3d['z'], c='crimson', s=80, edgecolors='white', alpha=0.8)
+
+    for i, row in df_3d.iterrows():
+        ax.text(row['x'], row['y'], row['z'], f" {row['palabra']}", size=10)
+
+    ax.set_title('Espacio Semántico (Word Embeddings) - El Principito', fontsize=14)
+    ax.set_xlabel('Dimensión Latente 1')
+    ax.set_xlabel('Dimensión Latente 2')
+    ax.set_xlabel('Dimensión Latente 3')
+
+    plt.tight_layout()
+    plt.show()
+
+    print(f"\nAsí ve la máquina la palabra 'zorro' (Vecotr de 10 dimensiones):")
+    try:
+        print(model.wv["zorro"])
+    except:
+        print("La palabra 'zorro' no apareción en el texto dummy, intenta con 'cordero'")
 
 
 if __name__ == '__main__':
